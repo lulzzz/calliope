@@ -27,11 +27,11 @@ def get_constraint_param(model, param_string, y, x, t):
     x = location
     t = timestep
     """
-    get_any_option = utils.any_option_getter(model)
+
     if param_string in model.data:
         return getattr(model.m, param_string)[y, x, t]
     else:
-        return get_any_option(y + '.constraints.' + param_string, x=x)
+        return model.get_option(y + '.constraints.' + param_string, x=x)
 
 def get_cost_param(model, cost, k, y, x, t):
     """
@@ -176,14 +176,15 @@ def node_energy_balance(model):
 
     def pc_rule(m, y, x, t):
         e_eff = get_constraint_param(model, 'e_eff', y, x, t)
-        p_eff = model.get_option(model, '.constraints.p_eff', y, x)
+        p_eff = model.get_option(y + '.constraints.p_eff', x=x)
+        total_eff = e_eff * p_eff
         # TODO once Pyomo supports it,
         # let this update conditionally on param update!
         if po.value(e_eff) == 0:
             c_prod = 0
         else:
-            c_prod = sum(m.c_prod[c, y, x, t] for c in m.c) / e_eff
-        c_con = sum(m.c_con[c, y, x, t] for c in m.c) * e_eff
+            c_prod = sum(m.c_prod[c, y, x, t] for c in m.c) / total_eff
+        c_con = sum(m.c_con[c, y, x, t] for c in m.c) * total_eff
 
         # If this tech is in the set of techs allowing rb, include it
         if y in m.y_rb:
@@ -282,7 +283,6 @@ def node_constraints_build(model):
     m.s_cap = po.Var(m.y_pc, m.x, within=po.NonNegativeReals)
     m.r_cap = po.Var(m.y_def_r, m.x, within=po.NonNegativeReals)
     m.e_cap = po.Var(m.y, m.x, within=po.NonNegativeReals)
-    m.e_cap_net = po.Var(m.y, m.x, within=po.NonNegativeReals)
     m.rb_cap = po.Var(m.y_rb, m.x, within=po.NonNegativeReals)
 
     # Constraint rules
@@ -293,7 +293,8 @@ def node_constraints_build(model):
             e_cap = model.get_option(y + '.constraints.e_cap.equals', x=x)
             if not e_cap:
                 e_cap = model.get_option(y + '.constraints.e_cap.max', x=x)
-            e_eff_ref = model.get_eff_ref('e', y) #look into updating this to account for time dependancy (defined in core.py)
+            #look into updating this to account for time dependancy (defined in core.py)
+            e_eff_ref = model.get_eff_ref('e', y)
             s_cap_max = s_time_max * e_cap * scale / e_eff_ref
         else:
             s_cap_max = None
@@ -330,19 +331,6 @@ def node_constraints_build(model):
             return get_var_constraint(m.e_cap[y, x], y, 'e_cap', x,
                                       scale=e_cap_scale)
 
-    def c_e_cap_gross_net_rule(m, y, x):
-        # Existence of this rule currently means that you can't load c_eff from file.
-        # Changed for the time being to raise error if someone tries loading c_eff from file
-        # to remind me that it is an issue - might need c_eff_ref like e_eff_ref
-        c_eff = get_any_option(y + '.constraints.c_eff', x=x)
-        if isinstance(c_eff,str):
-            e = exceptions.ModelError
-            raise e('can\'t load c_eff from file (for '
-                        '{} at {}) until '
-                        'c_e_cap_gross_net_rule '
-                        'is updated'.format(y, x))
-        return m.e_cap[y, x] * c_eff == m.e_cap_net[y, x]
-
     def c_rb_cap_rule(m, y, x):
         follow = get_any_option(y + '.constraints.rb_cap_follow', x=x)
         mode = get_any_option(y + '.constraints.rb_cap_follow_mode', x=x)
@@ -373,7 +361,6 @@ def node_constraints_build(model):
     m.c_r_cap = po.Constraint(m.y_def_r, m.x, rule=c_r_cap_rule)
     m.c_r_area = po.Constraint(m.y_def_r, m.x, rule=c_r_area_rule)
     m.c_e_cap = po.Constraint(m.y, m.x, rule=c_e_cap_rule)
-    m.c_e_cap_gross_net = po.Constraint(m.y, m.x, rule=c_e_cap_gross_net_rule)
     m.c_rb_cap = po.Constraint(m.y_rb, m.x, rule=c_rb_cap_rule)
 
 
@@ -389,8 +376,8 @@ def node_constraints_operational(model):
         return m.rs[y, x, t] >= -1 * time_res.at[t] * m.r_cap[y, x]
 
     def c_prod_max_rule(m, c, y, x, t):
-        c_prod = get_constraint_param(model, 'c_prod', y, x, t)
-        p_eff = model.get_option(model, '.constraints.p_eff', y, x)
+        c_prod = get_constraint_param(model, 'e_prod', y, x, t)
+        p_eff = model.get_option(y + '.constraints.p_eff', x=x)
         if (c_prod is True and
                 c == model.get_option(y + '.carrier')):
             return m.c_prod[c, y, x, t] <= time_res.at[t] * m.e_cap[y, x] * p_eff
@@ -406,8 +393,8 @@ def node_constraints_operational(model):
             return po.Constraint.NoConstraint
 
     def c_con_max_rule(m, c, y, x, t):
-        c_con = get_constraint_param(model, 'c_con', y, x, t)
-        p_eff = model.get_option(model, '.constraints.p_eff', y, x)
+        c_con = get_constraint_param(model, 'e_con', y, x, t)
+        p_eff = model.get_option(y + '.constraints.p_eff', x=x)
         if y in m.y_conv:
             return po.Constraint.Skip
         else:
@@ -507,7 +494,6 @@ def node_constraints_transmission(model):
 #    # Constraints
 #    m.c_ec_prod = po.Constraint(m.c, m.y_p, m.x, m.t, rule=c_ec_prod_rule)
 #    m.c_ec_con = po.Constraint(m.c, m.y_p, m.x, m.t, rule=c_ec_con_rule)
-
 
 def node_costs(model):
     """
@@ -623,15 +609,17 @@ def node_costs(model):
         )
 
     def c_cost_op_var_rule(m, y, x, t, k):
-        # Note: only counting es_prod for operational costs.
+        # Note: only counting c_prod for operational costs.
         # This should generally be a reasonable assumption to make.
+        # It might be necessary to remove parasitic losses for this
+        # i.e. c_prod --> es_prod.
         if y in m.y:
             carrier = model.get_option(y + '.carrier')
             return (
                 m.cost_op_var[y, x, t, k] ==
                 get_cost_param(model,'om_var', k, y, x, t) *
                 weights.loc[t] *
-                m.es_prod[carrier, y, x, t]
+                m.c_prod[carrier, y, x, t]
             )
         else:
             return m.cost_op_var[y, x, t, k] == 0
@@ -669,11 +657,11 @@ def node_costs(model):
         if y in m.y_demand:
             return (m.revenue_var[y, x, t, k] ==
                 sub_var * weights.loc[t]
-                * -m.es_con[carrier, y, x, t])
+                * -m.c_con[carrier, y, x, t])
         else:
             return (m.revenue_var[y, x, t, k] ==
                 sub_var * weights.loc[t]
-                * m.es_prod[carrier, y, x, t])
+                * m.c_prod[carrier, y, x, t])
 
     def c_revenue_fixed_rule(m, y, x, k):
         revenue = (sum(time_res * weights) / 8760 *
@@ -736,7 +724,7 @@ def model_constraints(model):
             balance = (sum(m.c_prod[c, y, xs, t]
                            for xs in family for y in m.y)
                        + sum(m.c_con[c, y, xs, t]
-                             for xs in family for y in m.y)
+                             for xs in family for y in m.y))
             if c == 'power':
                 return balance == 0
             else:
