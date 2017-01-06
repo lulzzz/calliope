@@ -66,6 +66,7 @@ techs:
             s_cap.min: 0  # Minimum storage capacity (kWh)
             s_cap.max: 0  # Maximum storage capacity (kWh)
             s_cap.equals: false  # Specific storage capacity (kWh)
+            c_rate: 0 # Charge rate (0 to 1) defining maximum charge/discharge (kW) for a given maximum storage capacity (kWh)
             # use_s_time: false  # Use full load hours for storage sizing? (set to ``true`` or ``false``)
             # s_time.max: 0  # Max storage time (full load hours). Only has an effect if ``use_s_time`` is set to ``true``
             s_loss: 0  # Storage loss rate (per hour)
