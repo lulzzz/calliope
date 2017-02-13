@@ -245,12 +245,12 @@ class Model(BaseModel):
         """
         time_series_constraint = ['r']
         time_series_data = []
-        allowed_timeseries_constraints = ['r_eff', 'r_scale', 'rb_eff', 's_loss',
+        allowed_timeseries_constraints = ['r_eff', 'r_scale', 'r2_eff', 's_loss',
                                     'e_prod', 'e_con', 'p_eff', 'e_eff',
                                     'e_cap_min_use', 'e_ramping']
         #variable costs/revenue only
         allowed_timeseries_costs = ['om_var', 'om_fuel',
-                                'om_rb','sub_var']
+                                'om_r2','sub_var']
         #flatten the dictionary to get e.g. techs.ccgt.constraints.e_eff as keys
         for k, v in self.config_model.as_dict_flat().items():
             if isinstance(v,str):
@@ -921,7 +921,7 @@ class Model(BaseModel):
         ts_constraint_sets = {'y_' + k + '_timeseries': set()
             for k in self.config_model.timeseries_constraints}
         self._sets = {**self._sets, **ts_constraint_sets}
-        ts_cost_sets = {'_'.join('y', param[2], param[1], 'timeseries'): set() )
+        ts_cost_sets = {'_'.join('y', param[2], param[1], 'timeseries'): set()
             for k in self.config_model.timeseries_costs}
         self._sets = {**self._sets, **ts_cost_sets}
 
@@ -1086,7 +1086,7 @@ class Model(BaseModel):
                 for x in self.m.x:
                     for t in self.m.t:
                         for k in ks:
-                        param_object[y, x, t, k] = initializer(self.m, y, x, t, k)
+                            param_object[y, x, t, k] = initializer(self.m, y, x, t, k)
 
         s_init = self.data['s_init'].to_dataframe().to_dict()['s_init']
         s_init_initializer = lambda m, y, x: float(s_init[x, y])
@@ -1198,8 +1198,8 @@ class Model(BaseModel):
                 k = self.m.kr
             else: #costs
                 k = self.m.kc
-            initializer = self._param_populator(self.data, param[2])
-            setattr(m, param[2] + '_param', po.Param(y, m.x, m.t, k
+            initializer = self._param_populator(self.data, param[2], param_type='costs')
+            setattr(m, param[2] + '_param', po.Param(y, m.x, m.t, k,
                                                  initialize=initializer,
                                                  mutable=True))
 
@@ -1509,10 +1509,10 @@ class Model(BaseModel):
         result = xr.Dataset({v: self.get_var(v) for v in detail})
         result['e_cap_net'] = self.get_e_cap_net()
         try:
-            result['rb_cap'] = self.get_var('rb_cap')
+            result['r2_cap'] = self.get_var('r2_cap')
         except exceptions.ModelError:
-            result['rb_cap'] = result['r_cap'].copy()  # get same dimensions
-            result['rb_cap'].loc[:] = 0
+            result['r2_cap'] = result['r_cap'].copy()  # get same dimensions
+            result['r2_cap'].loc[:] = 0
         return result
 
     def get_costs(self, t_subset=None):
