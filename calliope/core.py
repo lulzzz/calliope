@@ -922,7 +922,7 @@ class Model(BaseModel):
             for k in self.config_model.timeseries_constraints}
         self._sets = {**self._sets, **ts_constraint_sets}
         ts_cost_sets = {'_'.join('y', param[2], param[1], 'timeseries'): set()
-            for k in self.config_model.timeseries_costs}
+            for param in self.config_model.timeseries_costs}
         self._sets = {**self._sets, **ts_cost_sets}
 
         for param in self.config_model.timeseries_constraints: #constraints
@@ -1144,6 +1144,9 @@ class Model(BaseModel):
         m.c = po.Set(initialize=self._sets['c'], ordered=True)
         # Locations
         m.x = po.Set(initialize=self._sets['x'], ordered=True)
+        # Locations with only transmission technologies defined
+        m.x_trans = po.Set(initialize=self._sets['x_trans'], within=m.x,
+            ordered=True)
         # Cost classes
         m.kc = po.Set(initialize=self._sets['kc'], ordered=True)
         # Revenue classes
@@ -1151,19 +1154,62 @@ class Model(BaseModel):
         #
         # Technologies and various subsets of technologies
         #
-        m.y = po.Set(initialize=self._sets['y'], ordered=True)
-        # Production technologies
-        m.y_prod = po.Set(initialize=self._sets['y_prod'], within=m.y, ordered=True)
-        # Consumption technologies
-        m.y_con = po.Set(initialize=self._sets['y_con'], within=m.y, ordered=True)
-        # Production/consumption technologies
-        m.y_pc = po.Set(initialize=self._sets['y_pc'], within=m.y, ordered=True)
+        m.y_all = po.Set(initialize=self._sets['y_all'], ordered=True)
+        # Supply technologies
+        m.y_supply = po.Set(initialize=self._sets['y_supply'], within=m.y_all,
+            ordered=True)
+        # Supply+ technologies
+        m.y_supply_plus = po.Set(initialize=self._sets['y_supply_plus'],
+            within=m.y_all, ordered=True)
+        # Storage only technologies
+        m.y_storage = po.Set(initialize=self._sets['y_storage'], within=m.y_all,
+            ordered=True)
         # Transmission technologies
-        m.y_trans = po.Set(initialize=self._sets['y_trans'], within=m.y, ordered=True)
+        m.y_trans = po.Set(initialize=self._sets['y_trans'], within=m.y_all,
+            ordered=True)
         # Conversion technologies
-        m.y_conv = po.Set(initialize=self._sets['y_conv'], within=m.y, ordered=True)
+        m.y_conversion = po.Set(initialize=self._sets['y_conversion'],
+            within=m.y_all, ordered=True)
+        # Conversion+ technologies
+        m.y_conversion_plus = po.Set(initialize=self._sets['y_conversion_plus'],
+            within=m.y_all, ordered=True)
         # Demand sources
-        m.y_demand = po.Set(initialize=self._sets['y_demand'], within=m.y, ordered=True)
+        m.y_demand = po.Set(initialize=self._sets['y_demand'], within=m.y_all,
+            ordered=True)
+        # Technologies to deal with unmet demand
+        m.y_unmet = po.Set(initialize=self._sets['y_unmet'], within=m.y_all,
+            ordered=True)
+        # Supply/Demand sources
+        m.y_sd = po.Set(initialize=self._sets['y_sd'], within=m.y_all,
+            ordered=True)
+        # Technologies that contain storage
+        m.y_store = po.Set(initialize=self._sets['y_store'], within=m.y_all,
+            ordered=True)
+        # Supply/demand technologies with r_area constraints
+        m.y_sd_r_area = po.Set(initialize=self._sets['y_sd_r_area'],
+            within=m.y_all, ordered=True)
+        # Supply+ technologies with r_area constraints
+        m.y_sp_r_area = po.Set(initialize=self._sets['y_sp_r_area'],
+            within=m.y_all, ordered=True)
+        # All technologies with r_area constraints
+        m.y_r_area = po.Set(initialize=self._sets['y_r_area'], within=m.y_all,
+            ordered=True)
+        # Supply+ technologies that allow secondary resource
+        m.y_sp_r2 = po.Set(initialize=self._sets['y_sp_r2'], within=m.y_all),
+            ordered=True)
+        # Conversion+ technologies that allow secondary carrier_out
+        m.y_cp_2out = po.Set(initialize=self._sets['y_cp_2out'], within=m.y_all),
+            ordered=True)
+        # Conversion+ technologies that allow tertiary carrier_out
+        m.y_cp_3out = po.Set(initialize=self._sets['y_cp_3out'], within=m.y_all),
+            ordered=True)
+        # Conversion+ technologies that allow secondary carrier_in
+        m.y_cp_2in = po.Set(initialize=self._sets['y_cp_2in'], within=m.y_all),
+            ordered=True)
+        # Conversion+ technologies that allow tertiary carrier_in
+        m.y_cp_3in = po.Set(initialize=self._sets['y_cp_3in'], within=m.y_all),
+            ordered=True)
+
         ##TIMESERIES vars
         for param in self.config_model.timeseries_constraints:
             setattr(m, 'y_' + param + '_timeseries',
@@ -1174,8 +1220,6 @@ class Model(BaseModel):
                     po.Set(initialize = self._sets['_'.join('y', param[2]. param[1],
                                                             '_timeseries')],
                     within=m.y))
-        # Technologies that allow `r2`
-        m.y_r2 = po.Set(initialize=self._sets['y_r2'], within=m.y)
 
         #
         # Parameters
